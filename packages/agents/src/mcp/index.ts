@@ -302,11 +302,10 @@ export abstract class McpAgent<
   abstract init(): Promise<void>;
 
   async _init(props: Props) {
-    await this.ctx.storage.put("props", props ?? {});
+    await this.updateProps(props);
     if (!this.ctx.storage.get("transportType")) {
       await this.ctx.storage.put("transportType", "unset");
     }
-    this.props = props;
     if (!this.initRun) {
       this.initRun = true;
       await this.init();
@@ -319,6 +318,11 @@ export abstract class McpAgent<
 
   async isInitialized() {
     return (await this.ctx.storage.get("initialized")) === true;
+  }
+
+  async updateProps(props: Props) {
+    await this.ctx.storage.put("props", props ?? {});
+    this.props = props;
   }
 
   private async _initialize(): Promise<void> {
@@ -738,6 +742,8 @@ export abstract class McpAgent<
           const id = namespace.idFromName(`sse:${sessionId}`);
           const doStub = namespace.get(id);
 
+          // Update props with fresh values before processing message
+          await doStub.updateProps(ctx.props);
           // Forward the request to the Durable Object
           const error = await doStub.onSSEMcpMessage(sessionId, request);
 
@@ -982,6 +988,9 @@ export abstract class McpAgent<
               jsonrpc: "2.0"
             });
             return new Response(body, { status: 404 });
+          } else {
+            // Update props for existing sessions
+            await doStub.updateProps(ctx.props);
           }
 
           // We've evaluated all the error conditions! Now it's time to establish
